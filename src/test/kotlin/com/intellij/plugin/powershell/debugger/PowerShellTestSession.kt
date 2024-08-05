@@ -7,17 +7,17 @@ import com.intellij.execution.impl.RunnerAndConfigurationSettingsImpl
 import com.intellij.execution.runners.ExecutionEnvironment
 import com.intellij.execution.runners.ProgramRunner
 import com.intellij.openapi.project.Project
-import com.intellij.plugin.powershell.ide.debugger.ClientSessionKey
 import com.intellij.plugin.powershell.ide.debugger.PowerShellDebugProcess
 import com.intellij.plugin.powershell.ide.debugger.PowerShellDebugServiceStarter
 import com.intellij.plugin.powershell.ide.run.*
 import com.intellij.xdebugger.*
+import com.jetbrains.rd.util.lifetime.Lifetime
+import com.jetbrains.rd.util.reactive.Signal
 import kotlinx.coroutines.runBlocking
 import java.nio.file.Path
 import java.time.Duration
 import java.util.concurrent.Semaphore
 import kotlin.io.path.Path
-import com.jetbrains.rd.util.reactive.Signal
 import kotlin.io.path.pathString
 
 class PowerShellTestSession(val project: Project, val scriptPath: Path) {
@@ -32,9 +32,9 @@ class PowerShellTestSession(val project: Project, val scriptPath: Path) {
 
   val configuration: PowerShellRunConfiguration = createConfiguration(defaultWorkingDirectory.toString(), scriptPath.pathString)
 
-  fun startDebugSession() = startDebugSession(configuration)
+  fun startDebugSession(lifetime: Lifetime) = startDebugSession(lifetime, configuration)
 
-  fun startDebugSession(configuration: PowerShellRunConfiguration): XDebugSession {
+  fun startDebugSession(lifetime: Lifetime, configuration: PowerShellRunConfiguration): XDebugSession {
     val executor = DefaultDebugExecutor.getDebugExecutorInstance()
     val runner = ProgramRunner.getRunner(executor.id, configuration) as PowerShellProgramDebugRunner
     val environment = ExecutionEnvironment(
@@ -56,6 +56,7 @@ class PowerShellTestSession(val project: Project, val scriptPath: Path) {
       }
     })
     session.addSessionListener(sessionListener)
+    lifetime.onTermination { session.stop() } // TODO: Wait for stop? Think about graceful teardown for the debug process.
     return session
   }
 

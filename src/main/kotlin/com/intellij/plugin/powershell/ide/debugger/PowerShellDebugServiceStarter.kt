@@ -34,7 +34,9 @@ class PowerShellDebugServiceStarter {
       return runBlocking {
         val InOutPair = processRunner.establishDebuggerConnection()
         val process = processRunner.getProcess() ?: return@runBlocking null
-        val handler = KillableProcessHandler(process, "PowerShellEditorService")
+        val handler = KillableProcessHandler(process, "PowerShellEditorService").apply {
+          setShouldKillProcessSoftly(false)
+        }
 
         val console = TerminalExecutionConsole(environment.project, handler)
         handler.startNotify()

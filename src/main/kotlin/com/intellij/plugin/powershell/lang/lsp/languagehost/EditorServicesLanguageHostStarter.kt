@@ -3,7 +3,6 @@ package com.intellij.plugin.powershell.lang.lsp.languagehost
 import com.google.common.io.Files
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.configurations.PtyCommandLine
 import com.intellij.execution.process.*
 import com.intellij.notification.BrowseNotificationAction
@@ -182,53 +181,47 @@ open class EditorServicesLanguageHostStarter(protected val myProject: Project) :
   }
 
   override suspend fun establishDebuggerConnection(): Pair<InputStream?, OutputStream?> {
-    try {
-      val sessionInfo = startServerSession(true) ?: return Pair(null, null)
-      if (sessionInfo is SessionInfo.Pipes) {
-        val readPipeName = sessionInfo.debugServiceReadPipeName
-        val writePipeName = sessionInfo.debugServiceWritePipeName
-        return withSyncIOBackgroundContext {
-          if (SystemInfo.isWindows) {
-            val readPipe = RandomAccessFile(readPipeName, "rwd")
-            val writePipe = RandomAccessFile(writePipeName, "r")
-            val serverReadChannel = readPipe.channel
-            val serverWriteChannel = writePipe.channel
-            val inSf = Channels.newInputStream(serverWriteChannel)
-            val outSf = BufferedOutputStream(Channels.newOutputStream(serverReadChannel))
-            Pair(inSf, outSf)
-          } else {
-            val readSock = AFUNIXSocket.newInstance()
-            val writeSock = AFUNIXSocket.newInstance()
-            readSock.connect(AFUNIXSocketAddress.of(File(readPipeName)))
-            writeSock.connect(AFUNIXSocketAddress.of(File(writePipeName)))
-            Pair(writeSock.inputStream, readSock.outputStream)
-          }
-        }
-      } else {
-        return withSyncIOBackgroundContext block@{
-          val port = (sessionInfo as? SessionInfo.Tcp)?.debugServicePort ?: return@block Pair(null, null)
-          try {
-            socket = Socket("127.0.0.1", port)
-          } catch (e: Exception) {
-            logger.error("Unable to open connection to language host: $e")
-          }
-          if (socket == null) {
-            logger.error("Unable to create socket: " + toString())
-          }
-          if (socket?.isConnected == true) {
-            logger.info("Connection to language host established: ${socket?.localPort} -> ${socket?.port}")
-            val inputStream = socket?.getInputStream()
-            val outputStream = socket?.getOutputStream()
-            if (inputStream != null && outputStream != null) return@block Pair(inputStream, outputStream)
-          }
-
-          Pair(null, null)
+    val sessionInfo = startServerSession(true) ?: return Pair(null, null)
+    if (sessionInfo is SessionInfo.Pipes) {
+      val readPipeName = sessionInfo.debugServiceReadPipeName
+      val writePipeName = sessionInfo.debugServiceWritePipeName
+      return withSyncIOBackgroundContext {
+        if (SystemInfo.isWindows) {
+          val readPipe = RandomAccessFile(readPipeName, "rwd")
+          val writePipe = RandomAccessFile(writePipeName, "r")
+          val serverReadChannel = readPipe.channel
+          val serverWriteChannel = writePipe.channel
+          val inSf = Channels.newInputStream(serverWriteChannel)
+          val outSf = BufferedOutputStream(Channels.newOutputStream(serverReadChannel))
+          Pair(inSf, outSf)
+        } else {
+          val readSock = AFUNIXSocket.newInstance()
+          val writeSock = AFUNIXSocket.newInstance()
+          readSock.connect(AFUNIXSocketAddress.of(File(readPipeName)))
+          writeSock.connect(AFUNIXSocketAddress.of(File(writePipeName)))
+          Pair(writeSock.inputStream, readSock.outputStream)
         }
       }
-    }
-    catch (t: Throwable)
-    {
-      return Pair(null, null)
+    } else {
+      return withSyncIOBackgroundContext block@{
+        val port = (sessionInfo as? SessionInfo.Tcp)?.debugServicePort ?: return@block Pair(null, null)
+        try {
+          socket = Socket("127.0.0.1", port)
+        } catch (e: Exception) {
+          logger.error("Unable to open connection to language host: $e")
+        }
+        if (socket == null) {
+          logger.error("Unable to create socket: " + toString())
+        }
+        if (socket?.isConnected == true) {
+          logger.info("Connection to language host established: ${socket?.localPort} -> ${socket?.port}")
+          val inputStream = socket?.getInputStream()
+          val outputStream = socket?.getOutputStream()
+          if (inputStream != null && outputStream != null) return@block Pair(inputStream, outputStream)
+        }
+
+        Pair(null, null)
+      }
     }
   }
 

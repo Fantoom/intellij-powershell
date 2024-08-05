@@ -1,46 +1,38 @@
 package com.intellij.plugin.powershell.debugger
 
-import com.intellij.openapi.vfs.VfsUtil
-import com.intellij.plugin.powershell.ide.debugger.PowerShellDebugProcess
+import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
 import com.intellij.plugin.powershell.ide.debugger.PowerShellSuspendContext
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import com.intellij.testFramework.fixtures.TempDirTestFixture
-import com.intellij.testFramework.fixtures.impl.TempDirTestFixtureImpl
+import com.intellij.plugin.powershell.testFramework.DebuggerTestBase
 import com.intellij.xdebugger.XDebuggerTestUtil
 import com.intellij.xdebugger.XTestCompositeNode
-import com.intellij.xdebugger.XTestValueNode
-import com.intellij.xdebugger.frame.XNamedValue
-import com.intellij.xdebugger.frame.XValue
-import com.intellij.xdebugger.frame.XValuePlace
+import com.jetbrains.rd.util.lifetime.Lifetime
 import junit.framework.TestCase
-import java.io.File
 
-class BreakpointTest: BasePlatformTestCase() {
-
-  override fun getTestDataPath() = "src/test/resources/testData"
-
-  override fun createTempDirTestFixture(): TempDirTestFixture {
-    return TempDirTestFixtureImpl()
-  }
+class BreakpointTest : DebuggerTestBase() {
 
   fun testBreakpoint() {
-    val psiFile = myFixture.configureByFile("debugger/testBreakpoint.ps1")
+
+    val psiFile = copyAndOpenFile("debugger/testBreakpoint.ps1")
     val file = psiFile.virtualFile
 
     val fileLine = 5 // line in file, starting from 1
     val line = fileLine - 1 // breakpoint line, starting from 0
     val testSession = PowerShellTestSession(project, file.toNioPath())
     XDebuggerTestUtil.toggleBreakpoint(project, file, line)
-    val debugSession = testSession.startDebugSession()
-    XDebuggerTestUtil.waitFor(testSession.sessionListener.pausedSemaphore, testSession.waitForBackgroundTimeout.toMillis())
-    val suspendContext = debugSession.suspendContext as PowerShellSuspendContext
-    TestCase.assertEquals(line, suspendContext.activeExecutionStack.topFrame?.sourcePosition?.line)
-    myFixture.projectDisposable.dispose()
+    Lifetime.using { lt ->
+      val debugSession = testSession.startDebugSession(lt)
+      XDebuggerTestUtil.waitFor(
+        testSession.sessionListener.pausedSemaphore,
+        testSession.waitForBackgroundTimeout.toMillis()
+      )
+      val suspendContext = debugSession.suspendContext as PowerShellSuspendContext
+      TestCase.assertEquals(line, suspendContext.activeExecutionStack.topFrame?.sourcePosition?.line)
+    }
   }
 
   fun testConditionalBreakpoint()
   {
-    val psiFile = myFixture.configureByFile("debugger/testBreakpoint.ps1")
+    val psiFile = copyAndOpenFile("debugger/testBreakpoint.ps1")
     val file = psiFile.virtualFile
 
     val fileLine = 5 // line in file, starting from 1
@@ -52,20 +44,23 @@ class BreakpointTest: BasePlatformTestCase() {
     val testSession = PowerShellTestSession(project, file.toNioPath())
     XDebuggerTestUtil.toggleBreakpoint(project, file, line)
     XDebuggerTestUtil.setBreakpointCondition(project, line, condition)
-    val debugSession = testSession.startDebugSession()
-    XDebuggerTestUtil.waitFor(testSession.sessionListener.pausedSemaphore, testSession.waitForBackgroundTimeout.toMillis())
-    val suspendContext = debugSession.suspendContext as PowerShellSuspendContext
-    val topFrame = suspendContext.activeExecutionStack.topFrame!!
-    val children = XTestCompositeNode(topFrame).collectChildren()
-    val variableValue = XDebuggerTestUtil.findVar(children, variableName)
-    val variableValueNode = XDebuggerTestUtil.computePresentation(variableValue)
-    TestCase.assertEquals(value.toString(), variableValueNode.myValue)
-    myFixture.projectDisposable.dispose()
+    Lifetime.using { lt ->
+      val debugSession = testSession.startDebugSession(lt)
+      XDebuggerTestUtil.waitFor(
+        testSession.sessionListener.pausedSemaphore,
+        testSession.waitForBackgroundTimeout.toMillis()
+      )
+      val suspendContext = debugSession.suspendContext as PowerShellSuspendContext
+      val topFrame = suspendContext.activeExecutionStack.topFrame!!
+      val children = XTestCompositeNode(topFrame).collectChildren()
+      val variableValue = XDebuggerTestUtil.findVar(children, variableName)
+      val variableValueNode = XDebuggerTestUtil.computePresentation(variableValue)
+      TestCase.assertEquals(value.toString(), variableValueNode.myValue)
+    }
   }
 
-  override fun tearDown(){
-    myFixture.projectDisposable.dispose()
-    myFixture.tearDown()
+  override fun tearDown() {
+    FileEditorManagerEx.getInstanceEx(project).closeAllFiles()
+    super.tearDown()
   }
-
 }
